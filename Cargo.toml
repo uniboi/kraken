@@ -4,4 +4,5 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-adhesion = { path = "./adhesion" }
+adhesion = { git = "https://github.com/uniboi/adhesion" }
+postgres = "0.19.4"
