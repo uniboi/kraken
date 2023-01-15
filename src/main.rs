@@ -1,7 +1,35 @@
-use adhesion::http_server::{HTTPListener, HTTPMethod, HTTPResponse, HTTPServer, HTTPStatus, Route, self};
+use adhesion::http_server::{HTTPListener, HTTPMethod, HTTPServer, Route};
+use postgres::NoTls;
+use r2d2_postgres::PostgresConnectionManager;
 use std::collections::HashMap;
 
+mod models;
+mod routes;
+
 fn main() {
+    dotenv::dotenv().ok();
+    let env_host = std::env::var("DB_HOST").expect("DB_HOST must be set.");
+    let env_port = std::env::var("DB_PORT").expect("DB_PORT must be set.");
+    let env_usr = std::env::var("DB_USR").expect("DB_USR must be set.");
+    let env_db = std::env::var("DB_DB").expect("DB_DB must be set.");
+    let env_pw = std::env::var("DB_PW").expect("DB_PW must be set.");
+
+    let manager = PostgresConnectionManager::<NoTls>::new(
+        format!("postgres://{env_usr}:{env_pw}@{env_host}:{env_port}/{env_db}")
+            .parse()
+            .unwrap(),
+        NoTls,
+    );
+
+    let pool = r2d2_postgres::r2d2::Pool::new(manager).unwrap();
+
+    // let c_ref: &'static Client = &client;
+
+    for row in pool.get().unwrap().query("SELECT * FROM player", &[]).unwrap() {
+        let id: String = row.get("uid");
+        println!("{:?}", id);
+    }
+
     let server = HTTPServer {
         address: "127.0.0.1".to_string(),
         port: 8080,
@@ -9,75 +37,21 @@ fn main() {
             (
                 Route {
                     method: HTTPMethod::GET,
-                    location: String::from("/"),
+                    location: String::from("/player"),
                 },
-                root_listener as HTTPListener,
-            ),
-            (
-                Route {
-                    method: HTTPMethod::POST,
-                    location: String::from("/que"),
-                },
-                test_listener as HTTPListener,
+                routes::get_player::get_player_listener as HTTPListener<r2d2_postgres::r2d2::Pool<PostgresConnectionManager<NoTls>>>,
             ),
             (
                 Route {
                     method: HTTPMethod::GET,
-                    location: String::from("/nested/route"),
+                    location: String::from("/"),
                 },
-                nested_listener as HTTPListener,
-            )
+                routes::root::root_listener,
+            ),
         ])),
         default_404_listener: std::sync::Arc::new(None),
+        threads: 5,
+        passthrough: pool,
     };
     server.listen();
-}
-
-fn root_listener(
-    _headers: &HashMap<&str, &str>,
-    _body: &String,
-    query_parameters: &HashMap<&str, &str>,
-) -> HTTPResponse {
-    // std::thread::sleep(std::time::Duration::from_secs(5));
-    let body = format!("root listener.\n{:?}", query_parameters);
-    HTTPResponse {
-        status: HTTPStatus {
-            status: 200,
-            reason: String::from("OK"),
-        },
-        headers: http_server::default_headers(&body),
-        body,
-    }
-}
-
-fn test_listener(
-    _headers: &HashMap<&str, &str>,
-    _body: &String,
-    _query_parameters: &HashMap<&str, &str>,
-) -> HTTPResponse {
-    let body = format!("{:?}", _headers);
-    HTTPResponse {
-        status: HTTPStatus {
-            status: 200,
-            reason: String::from("OK"),
-        },
-        headers: http_server::default_headers(&body),
-        body,
-    }
-}
-
-fn nested_listener(
-    _headers: &HashMap<&str, &str>,
-    _body: &String,
-    _query_parameters: &HashMap<&str, &str>,
-) -> HTTPResponse {
-    let body = format!("nested_listener response.\n{:?}", _headers);
-    HTTPResponse {
-        status: HTTPStatus {
-            status: 200,
-            reason: String::from("OK"),
-        },
-        headers: http_server::default_headers(&body),
-        body,
-    }
 }
